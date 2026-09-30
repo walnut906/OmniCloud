@@ -16,59 +16,47 @@ try {
   });
 } catch (e) {
   console.error("Could not connect to MySQL:", e.message);
-  // We can create a dummy connection so tests don't immediately crash if DB is down
   connection = { query: () => [] };
 }
 
-// A wrapper to mimic better-sqlite3 API synchronously using sync-mysql
 export const db = {
-  pragma: (sql) => {
-    // MySQL doesn't have PRAGMA, just ignore
-  },
+  pragma: (sql) => {},
   prepare: (sql) => {
-    // In MySQL INSERT OR IGNORE is INSERT IGNORE
     let mysqlSql = sql.replace(/INSERT OR IGNORE/ig, 'INSERT IGNORE');
+    
+    // NEW: Fix for the ON CONFLICT error you just got!
+    mysqlSql = mysqlSql.replace(/ON\s+CONFLICT\s*\([^)]+\)\s*DO\s+UPDATE\s+SET/ig, 'ON DUPLICATE KEY UPDATE');
+    mysqlSql = mysqlSql.replace(/excluded\.([a-zA-Z0-9_]+)/ig, 'VALUES($1)');
     
     const escape = (val) => {
       if (val === null || val === undefined) return 'NULL';
       if (typeof val === 'number') return val;
       if (typeof val === 'boolean') return val ? 1 : 0;
-      // Simple escape, replace ' with ''
       return "'" + String(val).replace(/'/g, "''").replace(/\\/g, "\\\\") + "'";
     };
 
     return {
       run: (...args) => {
         let finalSql = mysqlSql;
-        args.forEach(arg => {
-          finalSql = finalSql.replace(/\?/, escape(arg));
-        });
+        args.forEach(arg => { finalSql = finalSql.replace(/\?/, escape(arg)); });
         const result = connection.query(finalSql);
         return { changes: result.affectedRows, lastInsertRowid: result.insertId };
       },
       get: (...args) => {
         let finalSql = mysqlSql;
-        args.forEach(arg => {
-          finalSql = finalSql.replace(/\?/, escape(arg));
-        });
+        args.forEach(arg => { finalSql = finalSql.replace(/\?/, escape(arg)); });
         const result = connection.query(finalSql);
         return result[0] || undefined;
       },
       all: (...args) => {
         let finalSql = mysqlSql;
-        args.forEach(arg => {
-          finalSql = finalSql.replace(/\?/, escape(arg));
-        });
+        args.forEach(arg => { finalSql = finalSql.replace(/\?/, escape(arg)); });
         return connection.query(finalSql);
       }
     };
   },
   exec: (sql) => {
-    const statements = sql
-      .split(';')
-      .map(s => s.trim())
-      .filter(s => s.length > 0);
-    
+    const statements = sql.split(';').map(s => s.trim()).filter(s => s.length > 0);
     for (let stmt of statements) {
       let mysqlSql = stmt.replace(/INSERT OR IGNORE/ig, 'INSERT IGNORE');
       mysqlSql = mysqlSql.replace(/([a-zA-Z_]+)\s+TEXT\s+PRIMARY\s+KEY/g, '$1 VARCHAR(255) PRIMARY KEY');
@@ -83,12 +71,8 @@ export const db = {
       
       if (mysqlSql.toUpperCase().startsWith('PRAGMA')) continue;
       
-      try {
-        connection.query(mysqlSql);
-      } catch (e) {
-        if (!e.message.includes('Duplicate key name')) {
-          console.error("DB Init Error:", e.message);
-        }
+      try { connection.query(mysqlSql); } catch (e) {
+        if (!e.message.includes('Duplicate key name')) console.error("DB Init Error:", e.message);
       }
     }
   }
@@ -103,7 +87,6 @@ db.exec(`
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
   );
-
   CREATE TABLE IF NOT EXISTS auth_sessions (
     id VARCHAR(255) PRIMARY KEY,
     user_id VARCHAR(255) NOT NULL,
@@ -113,7 +96,6 @@ db.exec(`
     last_used_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
   );
-
   CREATE TABLE IF NOT EXISTS cloud_accounts (
     id VARCHAR(255) PRIMARY KEY,
     user_id VARCHAR(255) NOT NULL,
@@ -127,7 +109,6 @@ db.exec(`
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
   );
-
   CREATE TABLE IF NOT EXISTS file_metadata (
     id VARCHAR(255) PRIMARY KEY,
     user_id VARCHAR(255) NOT NULL,
@@ -147,7 +128,6 @@ db.exec(`
     FOREIGN KEY(cloud_account_id) REFERENCES cloud_accounts(id) ON DELETE CASCADE,
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
   );
-
   CREATE TABLE IF NOT EXISTS user_settings (
     id VARCHAR(255) PRIMARY KEY,
     user_id VARCHAR(255) NOT NULL,
