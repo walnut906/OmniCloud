@@ -28,11 +28,24 @@ function escapeValue(val) {
   return "'" + String(val).replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'";
 }
 
+function escapeReservedWords(sql) {
+  return sql.replace(/\bkey\b/gi, (match, offset, str) => {
+    if (offset > 0 && str[offset - 1] === '`') return match;
+    if (offset + 3 < str.length && str[offset + 3] === '`') return match;
+    const before = str.substring(Math.max(0, offset - 15), offset).trimEnd().toUpperCase();
+    if (before.endsWith('PRIMARY') || before.endsWith('FOREIGN') || before.endsWith('DUPLICATE')) return match;
+    const after = str.substring(offset + 3).trimStart();
+    if (after.startsWith('(')) return match;
+    return '`key`';
+  });
+}
+
 function convertSql(sql) {
   let mysqlSql = sql;
   mysqlSql = mysqlSql.replace(/INSERT\s+OR\s+IGNORE/ig, 'INSERT IGNORE');
   mysqlSql = mysqlSql.replace(/ON\s+CONFLICT\s*\([^)]+\)\s*DO\s+UPDATE\s+SET/ig, 'ON DUPLICATE KEY UPDATE');
   mysqlSql = mysqlSql.replace(/excluded\.([a-zA-Z_][a-zA-Z0-9_]*)/ig, 'VALUES($1)');
+  mysqlSql = escapeReservedWords(mysqlSql);
   return mysqlSql;
 }
 
@@ -56,7 +69,7 @@ function replacePositionalParams(sql, args) {
 }
 
 export const db = {
-  pragma: (sql) => { /* MySQL doesn't have PRAGMA */ },
+  pragma: (sql) => {},
 
   transaction: (fn) => {
     const wrappedFn = (...args) => {
@@ -141,7 +154,6 @@ export const db = {
       mysqlSql = mysqlSql.replace(/cloud_account_id\s+TEXT/g, 'cloud_account_id VARCHAR(255)');
       mysqlSql = mysqlSql.replace(/virtual_path\s+TEXT/g, 'virtual_path VARCHAR(1024)');
       mysqlSql = mysqlSql.replace(/remote_file_id\s+TEXT/g, 'remote_file_id VARCHAR(255)');
-      mysqlSql = mysqlSql.replace(/key\s+TEXT/g, '`key` VARCHAR(255)');
 
       if (mysqlSql.toUpperCase().startsWith('PRAGMA')) continue;
 
@@ -156,7 +168,6 @@ export const db = {
   }
 };
 
-// Initialize tables
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id VARCHAR(255) PRIMARY KEY,
@@ -218,13 +229,11 @@ db.exec(`
   );
 `);
 
-// Insert default local user
 db.prepare(`
   INSERT IGNORE INTO users (id, email, password_hash, is_local)
   VALUES (?, ?, '', 1)
 `).run(LOCAL_USER_ID, LOCAL_USER_EMAIL);
 
-// Create indexes (ignore errors if they already exist)
 db.exec(`
   CREATE INDEX idx_auth_sessions_user_id ON auth_sessions(user_id);
   CREATE UNIQUE INDEX idx_cloud_accounts_user_provider_email ON cloud_accounts(user_id, provider, email);
