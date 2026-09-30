@@ -29,19 +29,14 @@ function escapeValue(val) {
 }
 
 function convertSql(sql) {
-  // Convert SQLite syntax to MySQL
   let mysqlSql = sql;
-  // INSERT OR IGNORE -> INSERT IGNORE
   mysqlSql = mysqlSql.replace(/INSERT\s+OR\s+IGNORE/ig, 'INSERT IGNORE');
-  // ON CONFLICT(...) DO UPDATE SET -> ON DUPLICATE KEY UPDATE
   mysqlSql = mysqlSql.replace(/ON\s+CONFLICT\s*\([^)]+\)\s*DO\s+UPDATE\s+SET/ig, 'ON DUPLICATE KEY UPDATE');
-  // excluded.column -> VALUES(column)
   mysqlSql = mysqlSql.replace(/excluded\.([a-zA-Z_][a-zA-Z0-9_]*)/ig, 'VALUES($1)');
   return mysqlSql;
 }
 
 function replaceNamedParams(sql, obj) {
-  // Replace @param_name with escaped values from the object
   return sql.replace(/@([a-zA-Z_][a-zA-Z0-9_]*)/g, (match, name) => {
     if (obj.hasOwnProperty(name)) {
       return escapeValue(obj[name]);
@@ -63,6 +58,21 @@ function replacePositionalParams(sql, args) {
 export const db = {
   pragma: (sql) => { /* MySQL doesn't have PRAGMA */ },
 
+  transaction: (fn) => {
+    const wrappedFn = (...args) => {
+      connection.query('START TRANSACTION');
+      try {
+        const result = fn(...args);
+        connection.query('COMMIT');
+        return result;
+      } catch (e) {
+        connection.query('ROLLBACK');
+        throw e;
+      }
+    };
+    return wrappedFn;
+  },
+
   prepare: (sql) => {
     const mysqlSql = convertSql(sql);
 
@@ -70,10 +80,8 @@ export const db = {
       run: (...args) => {
         let finalSql;
         if (args.length === 1 && typeof args[0] === 'object' && args[0] !== null && !Array.isArray(args[0])) {
-          // Named parameters: db.prepare("... @id ...").run({ id: 'abc' })
           finalSql = replaceNamedParams(mysqlSql, args[0]);
         } else {
-          // Positional parameters: db.prepare("... ? ...").run(val1, val2)
           finalSql = replacePositionalParams(mysqlSql, args);
         }
         try {
@@ -125,7 +133,6 @@ export const db = {
     const statements = sql.split(';').map(s => s.trim()).filter(s => s.length > 0);
     for (const stmt of statements) {
       let mysqlSql = convertSql(stmt);
-      // Convert SQLite column types to MySQL equivalents
       mysqlSql = mysqlSql.replace(/([a-zA-Z_]+)\s+TEXT\s+PRIMARY\s+KEY/g, '$1 VARCHAR(255) PRIMARY KEY');
       mysqlSql = mysqlSql.replace(/email\s+TEXT\s+NOT\s+NULL\s+UNIQUE/g, 'email VARCHAR(255) NOT NULL UNIQUE');
       mysqlSql = mysqlSql.replace(/token_hash\s+TEXT\s+NOT\s+NULL\s+UNIQUE/g, 'token_hash VARCHAR(255) NOT NULL UNIQUE');
@@ -141,7 +148,6 @@ export const db = {
       try {
         connection.query(mysqlSql);
       } catch (e) {
-        // Ignore "duplicate key name" errors from CREATE INDEX on existing indexes
         if (!e.message.includes('Duplicate key name') && !e.message.includes('Duplicate entry')) {
           console.error('[DB] Init Error:', e.message);
         }
