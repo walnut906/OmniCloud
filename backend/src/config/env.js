@@ -4,13 +4,9 @@ import crypto from 'crypto';
 
 dotenv.config();
 
-const machineFingerprint = crypto
-	.createHash('sha256')
-	.update(`${os.hostname()}|${os.platform()}|${os.arch()}`)
-	.digest('hex');
-
 const envHalf = process.env.OMNICLOUD_SECRET_HALF || 'omnicloud-dev-secret-half';
-const derivedKeyMaterial = `${envHalf}:${machineFingerprint}`;
+const fixedSeed = process.env.OMNICLOUD_ENCRYPTION_SEED || os.hostname() + '|' + os.platform() + '|' + os.arch();
+const derivedKeyMaterial = `${envHalf}:${fixedSeed}`;
 const encryptionKey = crypto.createHash('sha256').update(derivedKeyMaterial).digest();
 
 export const env = {
