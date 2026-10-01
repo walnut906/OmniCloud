@@ -61,7 +61,9 @@ export function createApp() {
 	// Serve frontend static files from the built Vue app
 	const frontendDist = path.join(__dirname, '../../frontend/dist');
 	app.use(express.static(frontendDist));
-	app.get('*', (req, res) => {
+
+	// For Vue.js SPA - all unmatched routes return index.html
+	app.use((req, res) => {
 		res.sendFile(path.join(frontendDist, 'index.html'));
 	});
 
