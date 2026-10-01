@@ -46,6 +46,7 @@ function convertSql(sql) {
   mysqlSql = mysqlSql.replace(/INSERT\s+OR\s+IGNORE/ig, 'INSERT IGNORE');
   mysqlSql = mysqlSql.replace(/ON\s+CONFLICT\s*\([^)]+\)\s*DO\s+UPDATE\s+SET/ig, 'ON DUPLICATE KEY UPDATE');
   mysqlSql = mysqlSql.replace(/excluded\.([a-zA-Z_][a-zA-Z0-9_]*)/ig, 'VALUES($1)');
+  mysqlSql = mysqlSql.replace(/COLLATE\s+NOCASE/ig, '');
   mysqlSql = escapeReservedWords(mysqlSql);
   return mysqlSql;
 }
