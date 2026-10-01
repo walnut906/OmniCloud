@@ -1,5 +1,7 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import authRoutes from './routes/authRoutes.js';
 import healthRoutes from './routes/healthRoutes.js';
 import accountRoutes from './routes/accountRoutes.js';
@@ -9,6 +11,9 @@ import settingsRoutes from './routes/settingsRoutes.js';
 import allocationRoutes from './routes/allocationRoutes.js';
 import { env } from './config/env.js';
 import { attachAuthContext } from './middleware/authMiddleware.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export function createApp() {
 	const app = express();
@@ -51,6 +56,13 @@ export function createApp() {
 		res.status(status).json({
 			error: error.message || 'Internal server error',
 		});
+	});
+
+	// Serve frontend static files from the built Vue app
+	const frontendDist = path.join(__dirname, '../../frontend/dist');
+	app.use(express.static(frontendDist));
+	app.get('*', (req, res) => {
+		res.sendFile(path.join(frontendDist, 'index.html'));
 	});
 
 	return app;
