@@ -260,7 +260,7 @@ export class MegaAdapter extends BaseCloudAdapter {
 
 	async deleteFile(fileRecord) {
 		const file = await this.findByRecord(fileRecord);
-		const result = await file.delete(false);
+		const result = await file.delete(true);
 
 		this.invalidateStorage();
 		return result;
